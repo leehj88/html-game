@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>점프 고양이</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    canvas {
+      display: block;
+      background: #cce7ff;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Game variables
+    const gravity = 0.5;
+    let gameSpeed = 5;
+    let score = 0;
+    let isJumping = false;
+
+    // Cat character
+    const cat = {
+      x: 100,
+      y: canvas.height - 150,
+      width: 50,
+      height: 50,
+      velocityY: 0,
+      color: 'orange'
+    };
+
+    // Obstacles
+    const obstacles = [];
+    const obstacleWidth = 50;
+    const obstacleHeight = 50;
+    const obstacleInterval = 2000; // milliseconds
+
+    // Controls
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !isJumping) {
+        cat.velocityY = -12;
+        isJumping = true;
+      }
+    });
+
+    // Create obstacles
+    function createObstacle() {
+      const obstacle = {
+        x: canvas.width,
+        y: canvas.height - obstacleHeight - 100,
+        width: obstacleWidth,
+        height: obstacleHeight,
+        color: 'red'
+      };
+      obstacles.push(obstacle);
+    }
+
+    setInterval(createObstacle, obstacleInterval);
+
+    // Game loop
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw background
+      ctx.fillStyle = '#87CEEB';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw ground
+      ctx.fillStyle = '#228B22';
+      ctx.fillRect(0, canvas.height - 100, canvas.width, 100);
+
+      // Draw cat
+      ctx.fillStyle = cat.color;
+      ctx.fillRect(cat.x, cat.y, cat.width, cat.height);
+
+      // Apply gravity
+      cat.velocityY += gravity;
+      cat.y += cat.velocityY;
+
+      // Prevent falling through the ground
+      if (cat.y > canvas.height - cat.height - 100) {
+        cat.y = canvas.height - cat.height - 100;
+        cat.velocityY = 0;
+        isJumping = false;
+      }
+
+      // Update and draw obstacles
+      obstacles.forEach((obstacle, index) => {
+        obstacle.x -= gameSpeed;
+
+        // Remove obstacles that go off screen
+        if (obstacle.x + obstacle.width < 0) {
+          obstacles.splice(index, 1);
+          score++;
+        }
+
+        // Check for collision
+        if (
+          cat.x < obstacle.x + obstacle.width &&
+          cat.x + cat.width > obstacle.x &&
+          cat.y < obstacle.y + obstacle.height &&
+          cat.y + cat.height > obstacle.y
+        ) {
+          alert('Game Over! Your Score: ' + score);
+          document.location.reload();
+        }
+
+        // Draw obstacle
+        ctx.fillStyle = obstacle.color;
+        ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+      });
+
+      // Draw score
+      ctx.fillStyle = 'black';
+      ctx.font = '24px Arial';
+      ctx.fillText('Score: ' + score, 20, 40);
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>지뢰 찾기</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+        }
+        
+        .game-info {
+            margin: 20px;
+            font-size: 20px;
+        }
+
+        .grid {
+            display: grid;
+            gap: 2px;
+            background-color: #333;
+            padding: 2px;
+            border: 2px solid #666;
+        }
+
+        .cell {
+            width: 30px;
+            height: 30px;
+            background-color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .revealed {
+            background-color: #fff;
+        }
+
+        .mine {
+            background-color: #ff0000;
+        }
+
+        .flagged {
+            color: #ff0000;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-info">
+        <div>지뢰 찾기: <span id="mine-count">0</span></div>
+        <div>시간: <span id="timer">0</span></div>
+    </div>
+    <div class="grid" id="grid"></div>
+    <button onclick="startGame()">새 게임</button>
+
+    <script>
+        const GRID_SIZE = 10;
+        const CELL_SIZE = 30;
+        let grid = [];
+        let mineCount = 0;
+        let gameOver = false;
+        let timer = 0;
+        let timerInterval;
+
+        function createGrid() {
+            const gridElement = document.getElementById('grid');
+            gridElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, ${CELL_SIZE}px)`;
+            
+            for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.setAttribute('data-index', i);
+                cell.addEventListener('click', () => revealCell(i));
+                cell.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    toggleFlag(i);
+                });
+                gridElement.appendChild(cell);
+            }
+        }
+
+        function startGame() {
+            grid = [];
+            mineCount = 0;
+            gameOver = false;
+            timer = 0;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                document.getElementById('timer').textContent = timer++;
+            }, 1000);
+            
+            document.getElementById('mine-count').textContent = mineCount;
+            
+            const gridElement = document.getElementById('grid');
+            while (gridElement.firstChild) {
+                gridElement.removeChild(gridElement.firstChild);
+            }
+            
+            for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+                grid[i] = {
+                    isMine: false,
+                    isRevealed: false,
+                    isFlagged: false,
+                    neighborMines: 0
+                };
+            }
+
+            // Place mines randomly
+            for (let i = 0; i < 10; i++) {
+                let randomIndex = Math.floor(Math.random() * GRID_SIZE * GRID_SIZE);
+                while (grid[randomIndex].isMine) {
+                    randomIndex = Math.floor(Math.random() * GRID_SIZE * GRID_SIZE);
+                }
+                grid[randomIndex].isMine = true;
+                mineCount++;
+            }
+
+            // Calculate neighbor mines
+            for (let i = 0; i < grid.length; i++) {
+                if (!grid[i].isMine) {
+                    grid[i].neighborMines = countNeighborMines(i);
+                }
+            }
+
+            // Create grid elements again
+            createGrid();
+        }
+
+        function countNeighborMines(index) {
+            let count = 0;
+            const row = Math.floor(index / GRID_SIZE);
+            const col = index % GRID_SIZE;
+
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    const newRow = row + i;
+                    const newCol = col + j;
+                    if (newRow >= 0 && newRow < GRID_SIZE && 
+                        newCol >= 0 && newCol < GRID_SIZE) {
+                        const neighborIndex = newRow * GRID_SIZE + newCol;
+                        if (grid[neighborIndex].isMine) {
+                            count++;
+                        }
+                    }
+                }
+            }
+
+            return count;
+        }
+
+        function revealCell(index) {
+            if (gameOver || grid[index].isFlagged) return;
+
+            if (grid[index].isMine) {
+                gameOver = true;
+                clearInterval(timerInterval);
+                alert('게임 오버!');
+                revealAll();
+                return;
+            }
+
+            if (!grid[index].isRevealed) {
+                grid[index].isRevealed = true;
+                document.querySelector(`[data-index="${index}"]`).classList.add('revealed');
+                
+                if (grid[index].neighborMines === 0) {
+                    // Reveal neighboring cells recursively
+                    revealNeighbors(index);
+                } else {
+                    document.querySelector(`[data-index="${index}"]`).textContent = 
+                        grid[index].neighborMines;
+                }
+
+                checkWin();
+            }
+        }
+
+        function revealNeighbors(index) {
+            const row = Math.floor(index / GRID_SIZE);
+            const col = index % GRID_SIZE;
+
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    const newRow = row + i;
+                    const newCol = col + j;
+                    if (newRow >= 0 && newRow < GRID_SIZE && 
+                        newCol >= 0 && newCol < GRID_SIZE) {
+                        const neighborIndex = newRow * GRID_SIZE + newCol;
+                        if (!grid[neighborIndex].isRevealed) {
+                            revealCell(neighborIndex);
+                        }
+                    }
+                }
+            }
+        }
+
+        function toggleFlag(index) {
+            if (!grid[index].isRevealed) {
+                grid[index].isFlagged = !grid[index].isFlagged;
+                document.querySelector(`[data-index="${index}"]`).textContent = 
+                    grid[index].isFlagged ? '🚩' : '';
+                document.getElementById('mine-count').textContent = 
+                    mineCount - (grid.filter(cell => cell.isFlagged).length);
+            }
+        }
+
+        function checkWin() {
+            const allRevealed = grid.every(cell => 
+                cell.isMine || cell.isRevealed
+            );
+            
+            if (allRevealed) {
+                gameOver = true;
+                clearInterval(timerInterval);
+                alert('승리 작성!');
+                revealAll();
+            }
+        }
+
+        function revealAll() {
+            grid.forEach((cell, index) => {
+                if (cell.isMine) {
+                    document.querySelector(`[data-index="${index}"]`).classList.add('mine');
+                }
+            });
+        }
+
+        // Initialize the game when page loads.
+        startGame();
+    </script>
+</body>
+</html>
