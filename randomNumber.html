@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>숫자 맞추기 게임</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        #input-container {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        input {
+            padding: 10px;
+            font-size: 16px;
+            width: 80px;
+            text-align: center;
+        }
+        button {
+            padding: 10px;
+            font-size: 16px;
+            margin-left: 5px;
+            cursor: pointer;
+        }
+        #log {
+            margin-top: 200px; /* 입력창이 고정되었으므로 여백 확보 */
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            width: 300px;
+            display: inline-block;
+            text-align: left;
+            background: #f9f9f9;
+        }
+        .log-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="input-container">
+        <h2>숫자 맞추기 게임</h2>
+        <p>1부터 100 사이의 숫자를 입력하세요.</p>
+        <input type="number" id="userInput" min="1" max="100">
+        <button onclick="checkNumber()">확인</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        let randomNumber = Math.floor(Math.random() * 100) + 1;
+        let attempts = 0;
+        let logContainer = document.getElementById("log");
+
+        function checkNumber() {
+            let userInput = document.getElementById("userInput").value;
+            if (isNaN(userInput) || userInput.trim() === "") {
+                addLog("⚠️ 숫자를 입력해주세요!", true);
+                return;
+            }
+
+            userInput = Number(userInput);
+            
+            if (userInput < 1 || userInput > 100) {
+                addLog(`⚠️ ${userInput} → 1부터 100 사이의 숫자를 입력하세요!`, true);
+                return;
+            }
+
+            attempts++;
+
+            if (userInput < randomNumber) {
+                addLog(`🔻 ${userInput} → 너무 낮아요!`);
+            } else if (userInput > randomNumber) {
+                addLog(`🔺 ${userInput} → 너무 높아요!`);
+            } else {
+                addLog(`🎉 ${userInput} → 정답! ${attempts}번 만에 맞췄어요!`, true);
+                document.getElementById("userInput").disabled = true;
+            }
+        }
+
+        function addLog(message, isWarning = false) {
+            let logItem = document.createElement("div");
+            logItem.className = "log-item";
+            logItem.style.color = isWarning ? "red" : "black";
+            logItem.innerHTML = message;
+            logContainer.prepend(logItem);
+        }
+    </script>
+
+</body>
+</html>
