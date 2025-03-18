@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>뱀파이어서바이버 미니게임</title>
+  <style>
+    /* 화면 전체를 채우고 기본 여백 제거 */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #111;  /* 배경색 */
+    }
+    /* 가운데 정렬을 위한 래퍼 */
+    .wrapper {
+      display: flex;
+      flex-direction: column;      /* 세로 방향 정렬 */
+      align-items: center;         /* 수평 가운데 정렬 */
+      justify-content: center;     /* 수직 가운데 정렬 */
+      height: 100%;
+    }
+    /* 캔버스 스타일 */
+    canvas {
+      background: #222;
+      border: 1px solid #666;
+      display: block;
+    }
+    /* 생존 시간 텍스트 스타일 */
+    #survivalTime {
+      margin-top: 10px;
+      color: #fff;
+      font-size: 18px;
+      font-family: sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <!-- 캔버스 (게임 영역) -->
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <!-- 생존 시간 표시 영역 -->
+    <div id="survivalTime">생존 시간: 0초</div>
+  </div>
+  <script>
+// --- 기본 설정 ---
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const WIDTH = canvas.width;
+const HEIGHT = canvas.height;
+
+// --- 전역 변수 ---
+let player = null;
+let enemies = [];
+let projectiles = [];
+let frameCount = 0;
+let isGameOver = false;   // 게임 오버 여부
+const keys = {};
+
+// 생존 시간 측정을 위한 시작 시간
+const startTime = Date.now();
+
+// --- 플레이어 클래스 ---
+class Player {
+  constructor() {
+    this.x = WIDTH / 2;
+    this.y = HEIGHT / 2;
+    this.size = 20;
+    this.color = "cyan";
+    this.speed = 3;
+    this.hp = 100;
+    this.maxHp = 100;
+
+    // 자동 공격 관련
+    this.attackCooldown = 60; // 쿨타임(프레임)
+    this.attackTimer = 0;
+  }
+
+  draw() {
+    // 플레이어 그리기
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 체력 바
+    ctx.fillStyle = "red";
+    const hpRatio = this.hp / this.maxHp;
+    const barWidth = this.size * 2;
+    ctx.fillRect(
+      this.x - this.size,
+      this.y - this.size - 10,
+      barWidth * hpRatio,
+      5
+    );
+    ctx.strokeStyle = "#fff";
+    ctx.strokeRect(this.x - this.size, this.y - this.size - 10, barWidth, 5);
+  }
+
+  update() {
+    // 키보드 이동 처리
+    if (keys["ArrowLeft"] || keys["KeyA"]) {
+      this.x -= this.speed;
+    }
+    if (keys["ArrowRight"] || keys["KeyD"]) {
+      this.x += this.speed;
+    }
+    if (keys["ArrowUp"] || keys["KeyW"]) {
+      this.y -= this.speed;
+    }
+    if (keys["ArrowDown"] || keys["KeyS"]) {
+      this.y += this.speed;
+    }
+
+    // 화면 밖으로 벗어나지 않도록 제한
+    if (this.x < this.size) this.x = this.size;
+    if (this.x > WIDTH - this.size) this.x = WIDTH - this.size;
+    if (this.y < this.size) this.y = this.size;
+    if (this.y > HEIGHT - this.size) this.y = HEIGHT - this.size;
+
+    // 자동 공격 (8방향 / 공격력 10)
+    if (this.attackTimer <= 0) {
+      // 8방향 각도(도) 배열
+      const angles = [0, 45, 90, 135, 180, 225, 270, 315];
+      angles.forEach((deg) => {
+        const rad = (deg * Math.PI) / 180;
+        projectiles.push(new Projectile(this.x, this.y, 5, 10, "yellow", rad));
+      });
+
+      this.attackTimer = this.attackCooldown;
+    } else {
+      this.attackTimer--;
+    }
+  }
+
+  takeDamage(damage) {
+    this.hp -= damage;
+    if (this.hp < 0) {
+      this.hp = 0;
+    }
+  }
+}
+
+// --- 적(몬스터) 클래스 ---
+class Enemy {
+  constructor(x, y, speed) {
+    this.x = x;
+    this.y = y;
+    this.size = 15;
+    this.color = "red";
+    this.speed = speed;
+    this.hp = 30;
+  }
+
+  draw() {
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  update() {
+    // 플레이어 위치를 추적
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 0) {
+      this.x += (dx / dist) * this.speed;
+      this.y += (dy / dist) * this.speed;
+    }
+  }
+}
+
+// --- 투사체 클래스 ---
+class Projectile {
+  constructor(x, y, speed, damage, color, angle) {
+    this.x = x;
+    this.y = y;
+    this.size = 5;
+    this.speed = speed;
+    this.damage = damage;
+    this.color = color;
+
+    // angle(라디안)으로 vx, vy 계산
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+  }
+
+  draw() {
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+  }
+}
+
+// --- 키 이벤트 리스너 ---
+window.addEventListener("keydown", (e) => {
+  keys[e.code] = true;
+});
+window.addEventListener("keyup", (e) => {
+  keys[e.code] = false;
+});
+
+// --- 적 스폰 함수 (상·하·좌·우 랜덤) ---
+function spawnEnemy() {
+  // 0: 위, 1: 아래, 2: 왼쪽, 3: 오른쪽
+  const side = Math.floor(Math.random() * 4);
+  let x, y;
+
+  switch (side) {
+    case 0: // 위
+      x = Math.random() * WIDTH; 
+      y = -20; 
+      break;
+    case 1: // 아래
+      x = Math.random() * WIDTH;
+      y = HEIGHT + 20;
+      break;
+    case 2: // 왼쪽
+      x = -20;
+      y = Math.random() * HEIGHT;
+      break;
+    case 3: // 오른쪽
+      x = WIDTH + 20;
+      y = Math.random() * HEIGHT;
+      break;
+  }
+
+  const speed = 1 + Math.random(); // 1~2 사이
+  enemies.push(new Enemy(x, y, speed));
+}
+
+// --- 충돌 체크 함수 ---
+function isColliding(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  return distance < a.size + b.size;
+}
+
+// --- 메인 게임 루프 ---
+function update() {
+  frameCount++;
+
+  // 플레이어 업데이트
+  player.update();
+
+  // 적 업데이트 & 충돌 체크
+  enemies.forEach((enemy, eIndex) => {
+    enemy.update();
+
+    // 플레이어와 충돌
+    if (isColliding(player, enemy)) {
+      player.takeDamage(1);
+    }
+
+    // 적 체력이 0 이하이면 제거
+    if (enemy.hp <= 0) {
+      enemies.splice(eIndex, 1);
+    }
+  });
+
+  // 투사체 업데이트 & 적과 충돌 체크
+  projectiles.forEach((proj, pIndex) => {
+    proj.update();
+    // 화면 밖으로 나가면 제거
+    if (proj.x < 0 || proj.x > WIDTH || proj.y < 0 || proj.y > HEIGHT) {
+      projectiles.splice(pIndex, 1);
+      return;
+    }
+    // 적과 충돌 체크
+    enemies.forEach((enemy) => {
+      if (isColliding(proj, enemy)) {
+        enemy.hp -= proj.damage;
+        projectiles.splice(pIndex, 1);
+      }
+    });
+  });
+
+  // 스폰 주기 2배(기존 60프레임마다 → 30프레임마다)
+  if (frameCount % 30 === 0) {
+    spawnEnemy();
+  }
+
+  // 플레이어 체력이 0 이하라면 게임 오버
+  if (player.hp <= 0) {
+    gameOver();
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, WIDTH, HEIGHT);
+  player.draw();
+  enemies.forEach((enemy) => enemy.draw());
+  projectiles.forEach((proj) => proj.draw());
+}
+
+// --- 생존 시간 업데이트 ---
+function updateSurvivalTime() {
+  const currentTime = Date.now();
+  const elapsedSec = Math.floor((currentTime - startTime) / 1000);
+  const survivalTimeElement = document.getElementById("survivalTime");
+  if (survivalTimeElement) {
+    survivalTimeElement.textContent = `생존 시간: ${elapsedSec}초`;
+  }
+}
+
+// --- 게임 오버 ---
+function gameOver() {
+  // 이미 게임오버 상태면 중복 실행 방지
+  if (isGameOver) return;
+
+  isGameOver = true;
+  alert("게임 오버!");
+  // 게임 루프가 멈추므로, 원한다면 여기서 window.location.reload() 등의 처리 가능
+  window.location.reload();
+}
+
+// --- 루프 ---
+function loop() {
+  if (!isGameOver) {
+    update();
+    draw();
+    updateSurvivalTime();
+    requestAnimationFrame(loop);
+  }
+}
+
+// --- 게임 시작 ---
+function init() {
+  player = new Player();
+  isGameOver = false;
+  frameCount = 0;
+  loop();
+}
+
+// 초기화 후 시작
+init();
+
+  </script>
+</body>
+</html>
