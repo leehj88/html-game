@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>팩맨 게임</title>
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    canvas {
+      background: #000;
+      image-rendering: pixelated;
+    }
+  </style>
+</head>
+<body>
+  <!-- 타일 크기를 40으로 설정하면 15×15 격자에 맞춰 600×600 크기의 캔버스가 됩니다 -->
+  <canvas id="gameCanvas" width="600" height="600"></canvas>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const tileSize = 40; // 타일 크기 증가
+    const rows = 15;
+    const cols = 15;
+    
+    // 지도: 1 = 벽, 0 = 먹이, 2 = 빈 공간(먹은 자리)
+    let map = [
+      [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+      [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
+      [1,0,1,0,0,0,0,0,1,0,0,0,1,0,1],
+      [1,0,1,1,1,1,1,0,1,1,1,1,1,0,1],
+      [1,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+      [1,0,1,1,1,0,1,1,1,1,1,0,1,0,1],
+      [1,0,0,0,1,0,0,0,0,0,1,0,1,0,1],
+      [1,1,1,0,1,1,1,1,1,0,1,0,1,0,1],
+      [1,0,0,0,0,0,0,0,1,0,0,0,0,0,1],
+      [1,0,1,1,1,1,1,0,1,1,1,1,1,0,1],
+      [1,0,1,0,0,0,1,0,0,0,0,0,1,0,1],
+      [1,0,1,0,1,0,1,1,1,1,1,0,1,0,1],
+      [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+      [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ];
+    
+    let score = 0;
+    function countPellets() {
+      let count = 0;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (map[r][c] === 0) count++;
+        }
+      }
+      return count;
+    }
+    const totalPellets = countPellets();
+    
+    // 팩맨 객체: 격자 기반이지만 부드러운 이동을 위해 pixel 좌표를 사용
+    let pacman = {
+      gridX: 1,
+      gridY: 1,
+      x: 1 * tileSize + tileSize / 2,
+      y: 1 * tileSize + tileSize / 2,
+      targetGridX: 1,
+      targetGridY: 1,
+      moving: false,
+      speed: 200, // 픽셀/초 (속도 증가)
+      dir: {x: 0, y: 0}
+    };
+    
+    // 유령 객체 (단순화를 위해 한 마리만)
+    let ghosts = [
+	  {
+		gridX: 13,
+		gridY: 13,
+		x: 13 * tileSize + tileSize / 2,
+		y: 13 * tileSize + tileSize / 2,
+		targetGridX: 13,
+		targetGridY: 13,
+		moving: false,
+		speed: 150,
+		dir: { x: 0, y: 0 }
+	  },
+	  {
+		gridX: 13,
+		gridY: 1,
+		x: 13 * tileSize + tileSize / 2,
+		y: 1 * tileSize + tileSize / 2,
+		targetGridX: 13,
+		targetGridY: 1,
+		moving: false,
+		speed: 150,
+		dir: { x: 0, y: 0 }
+	  }
+	];
+    
+    // 전역 시간 변수 (팩맨 입 애니메이션에 사용)
+    let globalTime = 0;
+    
+    // 미로와 먹이 그리기
+    function drawMaze() {
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const cell = map[r][c];
+          const x = c * tileSize;
+          const y = r * tileSize;
+          if (cell === 1) {
+            ctx.fillStyle = "blue";
+            ctx.fillRect(x, y, tileSize, tileSize);
+          } else if (cell === 0) {
+            ctx.fillStyle = "yellow";
+            ctx.beginPath();
+            ctx.arc(x + tileSize/2, y + tileSize/2, 5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+    
+    // 팩맨 그리기 (지속적으로 입이 열리고 닫히도록 애니메이션 적용)
+    function drawPacman() {
+      let rotation = 0;
+      if (pacman.dir.x === 1) rotation = 0;
+      else if (pacman.dir.x === -1) rotation = Math.PI;
+      else if (pacman.dir.y === 1) rotation = Math.PI / 2;
+      else if (pacman.dir.y === -1) rotation = -Math.PI / 2;
+      
+      // 시간에 따라 입의 각도가 주기적으로 변함 (0 ~ 최대 각도)
+      const baseAngle = Math.PI / 6; // 최대 열림 각도
+      const mouthAngle = baseAngle * Math.abs(Math.sin(globalTime / 200));
+      
+      ctx.fillStyle = "yellow";
+      ctx.beginPath();
+      ctx.arc(pacman.x, pacman.y, tileSize/2 - 2, mouthAngle + rotation, 2 * Math.PI - mouthAngle + rotation);
+      ctx.lineTo(pacman.x, pacman.y);
+      ctx.fill();
+    }
+    
+    // 유령 그리기
+    function drawGhost(ghost) {
+	  ctx.fillStyle = "red";
+	  ctx.beginPath();
+	  ctx.arc(ghost.x, ghost.y, tileSize / 2 - 2, 0, Math.PI * 2);
+	  ctx.fill();
+	  ctx.fillStyle = "white";
+	  ctx.beginPath();
+	  ctx.arc(ghost.x - 6, ghost.y - 4, 4, 0, Math.PI * 2);
+	  ctx.arc(ghost.x + 6, ghost.y - 4, 4, 0, Math.PI * 2);
+	  ctx.fill();
+	}
+    
+    // 부드러운 애니메이션 업데이트 루프
+    let lastTime = performance.now();
+    function update(currentTime) {
+      const dt = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+      globalTime = currentTime;
+      
+      // 팩맨 부드러운 이동
+      if (pacman.moving) {
+        const targetX = pacman.targetGridX * tileSize + tileSize / 2;
+        const targetY = pacman.targetGridY * tileSize + tileSize / 2;
+        const dx = targetX - pacman.x;
+        const dy = targetY - pacman.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const move = pacman.speed * dt;
+        if (move >= distance) {
+          pacman.x = targetX;
+          pacman.y = targetY;
+          pacman.gridX = pacman.targetGridX;
+          pacman.gridY = pacman.targetGridY;
+          pacman.moving = false;
+          // 먹이 먹기 처리
+          if (map[pacman.gridY][pacman.gridX] === 0) {
+            map[pacman.gridY][pacman.gridX] = 2;
+            score++;
+            if (score === totalPellets) {
+              alert("승리! 모든 먹이를 먹었습니다.");
+              document.location.reload();
+            }
+          }
+        } else {
+          pacman.x += (dx / distance) * move;
+          pacman.y += (dy / distance) * move;
+        }
+      }
+      
+      // 유령 부드러운 이동 (이동 중이 아니면 새로운 방향 선택)
+      ghosts.forEach(ghost => {
+	  if (!ghost.moving) {
+		const directions = [
+		  { x: 1, y: 0 },
+		  { x: -1, y: 0 },
+		  { x: 0, y: 1 },
+		  { x: 0, y: -1 }
+		];
+		const possible = [];
+		for (const d of directions) {
+		  const newX = ghost.gridX + d.x;
+		  const newY = ghost.gridY + d.y;
+		  if (map[newY][newX] !== 1) {
+			possible.push(d);
+		  }
+		}
+		if (possible.length > 0) {
+		  const chosen = possible[Math.floor(Math.random() * possible.length)];
+		  ghost.dir = chosen;
+		  ghost.targetGridX = ghost.gridX + chosen.x;
+		  ghost.targetGridY = ghost.gridY + chosen.y;
+		  ghost.moving = true;
+		}
+	  } else {
+		const targetX = ghost.targetGridX * tileSize + tileSize / 2;
+		const targetY = ghost.targetGridY * tileSize + tileSize / 2;
+		const dx = targetX - ghost.x;
+		const dy = targetY - ghost.y;
+		const distance = Math.sqrt(dx * dx + dy * dy);
+		const move = ghost.speed * dt;
+		if (move >= distance) {
+		  ghost.x = targetX;
+		  ghost.y = targetY;
+		  ghost.gridX = ghost.targetGridX;
+		  ghost.gridY = ghost.targetGridY;
+		  ghost.moving = false;
+		} else {
+		  ghost.x += (dx / distance) * move;
+		  ghost.y += (dy / distance) * move;
+		}
+	  }
+	});
+      
+      // 충돌 검사 (격자 기준)
+      ghosts.forEach(ghost => {
+		  if (pacman.gridX === ghost.gridX && pacman.gridY === ghost.gridY) {
+			alert("게임 오버! 점수: " + score);
+			document.location.reload();
+		  }
+		});
+      
+      // 그리기
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawMaze();
+      drawPacman();
+      ghosts.forEach(ghost => {
+	  drawGhost(ghost);
+	});
+      
+      requestAnimationFrame(update);
+    }
+    
+    // 방향키 입력 처리: 팩맨이 이동 중이 아닐 때만 새로운 타일로 이동
+    document.addEventListener("keydown", function(e) {
+      if (!pacman.moving) {
+        let dir = null;
+        if (e.key === "ArrowRight") dir = {x: 1, y: 0};
+        else if (e.key === "ArrowLeft") dir = {x: -1, y: 0};
+        else if (e.key === "ArrowUp") dir = {x: 0, y: -1};
+        else if (e.key === "ArrowDown") dir = {x: 0, y: 1};
+        if (dir) {
+          const newGridX = pacman.gridX + dir.x;
+          const newGridY = pacman.gridY + dir.y;
+          if (map[newGridY][newGridX] !== 1) {
+            pacman.targetGridX = newGridX;
+            pacman.targetGridY = newGridY;
+            pacman.dir = dir;
+            pacman.moving = true;
+          }
+        }
+      }
+    });
+    
+    requestAnimationFrame(update);
+  </script>
+</body>
+</html>
